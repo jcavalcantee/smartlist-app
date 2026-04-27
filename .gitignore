@@ -1,0 +1,21 @@
+node_modules/
+dist/
+.build/
+.aws-sam/
+*.js.map
+.env
+.env.local
+*.env
+samconfig.toml.bak
+
+# Flutter
+mobile/.dart_tool/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/build/
+mobile/.packages
+
+# IDEs
+.vscode/settings.json
+.idea/
+*.swp
