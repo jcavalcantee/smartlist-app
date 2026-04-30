@@ -1,52 +1,87 @@
+import 'dart:convert';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/utils/month_format.dart';
+import '../../../core/services/api_client.dart';
+import '../../history/providers/history_provider.dart';
 import '../models/list_item.dart';
 
 final monthlyListNotifierProvider =
-    AsyncNotifierProvider<MonthlyListNotifier, MonthlyList>(
+    AsyncNotifierProviderFamily<MonthlyListNotifier, MonthlyList, String>(
   MonthlyListNotifier.new,
 );
 
-class MonthlyListNotifier extends AsyncNotifier<MonthlyList> {
+class MonthlyListNotifier extends FamilyAsyncNotifier<MonthlyList, String> {
   @override
-  Future<MonthlyList> build() async {
-    await Future.delayed(const Duration(milliseconds: 600));
-    return MonthlyList(
-      yearMonth: currentYearMonth(),
-      status: 'OPEN',
-      updatedAt: DateTime.now().toIso8601String(),
-      items: [
-        ListItem(itemId: '1', canonicalName: 'arroz',   displayName: 'Arroz',        quantity: 2,   unit: 'kg',   price: 5.99,  addedAt: '', source: 'app'),
-        ListItem(itemId: '2', canonicalName: 'feijao',  displayName: 'Feijão',       quantity: 1,   unit: 'kg',   price: 8.50,  addedAt: '', source: 'alexa'),
-        ListItem(itemId: '3', canonicalName: 'leite',   displayName: 'Leite',        quantity: 6,   unit: 'l',    price: 4.29,  addedAt: '', source: 'alexa'),
-        ListItem(itemId: '4', canonicalName: 'ovos',    displayName: 'Ovos',         quantity: 12,  unit: 'un',   price: 0.89,  addedAt: '', source: 'app'),
-        ListItem(itemId: '5', canonicalName: 'pao',     displayName: 'Pão de Forma', quantity: 2,   unit: 'pack', price: 7.90,  addedAt: '', source: 'app'),
-        ListItem(itemId: '6', canonicalName: 'frango',  displayName: 'Frango',       quantity: 1.5, unit: 'kg',   price: 14.90, addedAt: '', source: 'alexa'),
-        ListItem(itemId: '7', canonicalName: 'tomate',  displayName: 'Tomate',       quantity: 1,   unit: 'kg',   price: 6.50,  addedAt: '', source: 'app'),
-      ],
-    );
+  Future<MonthlyList> build(String yearMonth) async {
+    final client = ref.read(apiClientProvider);
+    final response = await client.get('/list/$yearMonth');
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      return MonthlyList.fromJson(data);
+    }
+
+    if (response.statusCode == 404) {
+      return MonthlyList(
+        yearMonth: yearMonth,
+        status: 'OPEN',
+        updatedAt: DateTime.now().toIso8601String(),
+        items: [],
+      );
+    }
+
+    throw Exception('Erro ao carregar lista (${response.statusCode})');
   }
 
-  Future<void> addItem(String displayName, double quantity, String unit, double? price) async {
-    final current = await future;
-    final newItem = ListItem(
-      itemId: DateTime.now().millisecondsSinceEpoch.toString(),
-      canonicalName: displayName.toLowerCase().trim(),
-      displayName: displayName.trim(),
-      quantity: quantity,
-      unit: unit,
-      price: price,
-      addedAt: DateTime.now().toIso8601String(),
-      source: 'app',
+  Future<void> addItem(
+    String displayName,
+    double quantity,
+    String unit,
+    double? price,
+  ) async {
+    final client = ref.read(apiClientProvider);
+    final response = await client.post('/items', body: {
+      'displayName': displayName,
+      'quantity': quantity,
+      'unit': unit,
+      if (price != null) 'price': price,
+      'source': 'app',
+      'yearMonth': arg,
+    });
+
+    if (response.statusCode != 201) {
+      throw Exception('Erro ao adicionar item (${response.statusCode})');
+    }
+
+    ref.invalidateSelf();
+  }
+
+  Future<void> removeItem(String itemId) async {
+    final client = ref.read(apiClientProvider);
+    final response =
+        await client.delete('/items/$itemId?yearMonth=${Uri.encodeComponent(arg)}');
+
+    if (response.statusCode != 200) {
+      throw Exception('Erro ao remover item (${response.statusCode})');
+    }
+
+    ref.invalidateSelf();
+  }
+
+  Future<void> closePurchase({double? adjustedTotal}) async {
+    final client = ref.read(apiClientProvider);
+    final response = await client.post(
+      '/list/$arg/close',
+      body: adjustedTotal != null ? {'adjustedTotal': adjustedTotal} : {},
     );
-    state = AsyncData(MonthlyList(
-      yearMonth: current.yearMonth,
-      status: current.status,
-      updatedAt: DateTime.now().toIso8601String(),
-      items: [...current.items, newItem],
-      adjustedTotal: current.adjustedTotal,
-    ));
+
+    if (response.statusCode != 200) {
+      throw Exception('Erro ao fechar compra (${response.statusCode})');
+    }
+
+    ref.invalidateSelf();
+    ref.invalidate(historyProvider);
   }
 
   Future<void> setAdjustedTotal(double total) async {
@@ -57,17 +92,6 @@ class MonthlyListNotifier extends AsyncNotifier<MonthlyList> {
       updatedAt: DateTime.now().toIso8601String(),
       items: current.items,
       adjustedTotal: total,
-    ));
-  }
-
-  Future<void> closePurchase(String yearMonth) async {
-    final current = await future;
-    state = AsyncData(MonthlyList(
-      yearMonth: current.yearMonth,
-      status: 'CLOSED',
-      updatedAt: DateTime.now().toIso8601String(),
-      items: current.items,
-      adjustedTotal: current.adjustedTotal,
     ));
   }
 }

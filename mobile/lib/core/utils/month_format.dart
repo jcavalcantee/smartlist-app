@@ -13,3 +13,9 @@ String currentYearMonth() {
   final now = DateTime.now();
   return '${now.year}-${now.month.toString().padLeft(2, '0')}';
 }
+
+String nextYearMonth(String yearMonth) {
+  final parts = yearMonth.split('-');
+  final next = DateTime(int.parse(parts[0]), int.parse(parts[1]) + 1);
+  return '${next.year}-${next.month.toString().padLeft(2, '0')}';
+}

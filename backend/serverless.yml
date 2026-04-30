@@ -1,0 +1,229 @@
+service: app-compras
+frameworkVersion: '3'
+
+# ──────────────────────────────────────────────────────────────────────────────
+# DynamoDB — Single-Table Design
+# ──────────────────────────────────────────────────────────────────────────────
+#
+#  Padrão de chaves:
+#  ┌──────────────────────────┬─────────────────────┬────────────────────────┐
+#  │ Entidade                 │ PK                  │ SK                     │
+#  ├──────────────────────────┼─────────────────────┼────────────────────────┤
+#  │ Lista mensal             │ USER#<userId>        │ LIST#YYYY-MM           │
+#  │ Snapshot de compra       │ USER#<userId>        │ HISTORY#<uuid>         │
+#  │ Item do catálogo         │ CATALOG#<canonical>  │ META                   │
+#  └──────────────────────────┴─────────────────────┴────────────────────────┘
+#
+#  Access patterns cobertos sem GSI:
+#   • Buscar lista do mês    → GetItem  PK=USER#x  SK=LIST#YYYY-MM
+#   • Histórico do usuário   → Query    PK=USER#x  SK begins_with HISTORY#
+#   • Item do catálogo       → GetItem  PK=CATALOG#canonical  SK=META
+# ──────────────────────────────────────────────────────────────────────────────
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  architecture: arm64
+  region: ${opt:region, 'us-east-1'}
+  stage: ${opt:stage, 'dev'}
+  memorySize: 128
+  timeout: 10
+  logs:
+    httpApi: true
+
+  environment:
+    TABLE_NAME: !Ref MainTable
+    STAGE: ${self:provider.stage}
+
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+            - dynamodb:Query
+          Resource:
+            - !GetAtt MainTable.Arn
+
+  httpApi:
+    cors:
+      allowedOrigins: '*'
+      allowedHeaders:
+        - Content-Type
+        - Authorization
+      allowedMethods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - OPTIONS
+    # Authorizer JWT nativo do SLS — gera AWS::ApiGatewayV2::Authorizer automaticamente.
+    # issuerUrl e audience usam Fn::Sub / Ref para referenciar o Cognito do mesmo stack.
+    authorizers:
+      cognitoAuthorizer:
+        type: jwt
+        identitySource: $request.header.Authorization
+        issuerUrl:
+          Fn::Sub: 'https://cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPool}'
+        audience:
+          - Ref: CognitoUserPoolClient
+
+plugins:
+  - serverless-esbuild
+
+custom:
+  esbuild:
+    bundle: true
+    minify: true
+    sourcemap: false
+    target: node20
+    exclude:
+      - '@aws-sdk/*'
+
+# ─── Funções ──────────────────────────────────────────────────────────────────
+
+functions:
+
+  ingestItem:
+    handler: functions/ingest-item/index.handler
+    description: Adiciona ou atualiza item na lista do mês corrente
+    events:
+      - httpApi:
+          path: /items
+          method: POST
+          authorizer:
+            name: cognitoAuthorizer
+
+  removeItem:
+    handler: functions/remove-item/index.handler
+    description: Remove item da lista do mês corrente
+    events:
+      - httpApi:
+          path: /items/{itemId}
+          method: DELETE
+          authorizer:
+            name: cognitoAuthorizer
+
+  getMonthlyList:
+    handler: functions/get-monthly-list/index.handler
+    description: Retorna a lista de compras de um mês
+    events:
+      - httpApi:
+          path: /list/{yearMonth}
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+
+  closePurchase:
+    handler: functions/close-purchase/index.handler
+    description: Fecha/arquiva a compra do mês e gera snapshot
+    events:
+      - httpApi:
+          path: /list/{yearMonth}/close
+          method: POST
+          authorizer:
+            name: cognitoAuthorizer
+
+  getHistory:
+    handler: functions/get-history/index.handler
+    description: Retorna snapshots de compras fechadas do usuário
+    events:
+      - httpApi:
+          path: /history
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+
+  manageCatalog:
+    handler: functions/manage-catalog/index.handler
+    description: CRUD do catálogo de produtos canônicos
+    events:
+      - httpApi:
+          path: /catalog
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+      - httpApi:
+          path: /catalog
+          method: POST
+          authorizer:
+            name: cognitoAuthorizer
+
+
+# ─── Recursos CloudFormation ──────────────────────────────────────────────────
+
+resources:
+  Resources:
+
+    # ── DynamoDB ──────────────────────────────────────────────────────────────
+    MainTable:
+      Type: AWS::DynamoDB::Table
+      DeletionPolicy: Retain
+      UpdateReplacePolicy: Retain
+      Properties:
+        TableName: app-compras-${self:provider.stage}
+        BillingMode: PAY_PER_REQUEST
+        PointInTimeRecoverySpecification:
+          PointInTimeRecoveryEnabled: true
+        AttributeDefinitions:
+          - AttributeName: PK
+            AttributeType: S
+          - AttributeName: SK
+            AttributeType: S
+        KeySchema:
+          - AttributeName: PK
+            KeyType: HASH
+          - AttributeName: SK
+            KeyType: RANGE
+        Tags:
+          - Key: Project
+            Value: app-compras
+          - Key: Stage
+            Value: ${self:provider.stage}
+
+    # ── Cognito ───────────────────────────────────────────────────────────────
+    CognitoUserPool:
+      Type: AWS::Cognito::UserPool
+      Properties:
+        UserPoolName: app-compras-${self:provider.stage}
+        AutoVerifiedAttributes: [email]
+        UsernameAttributes: [email]
+        Policies:
+          PasswordPolicy:
+            MinimumLength: 8
+            RequireUppercase: true
+            RequireNumbers: true
+            RequireSymbols: false
+
+    CognitoUserPoolClient:
+      Type: AWS::Cognito::UserPoolClient
+      Properties:
+        ClientName: app-compras-mobile-${self:provider.stage}
+        UserPoolId: !Ref CognitoUserPool
+        ExplicitAuthFlows:
+          - ALLOW_USER_SRP_AUTH
+          - ALLOW_REFRESH_TOKEN_AUTH
+        PreventUserExistenceErrors: ENABLED
+        GenerateSecret: false
+
+  Outputs:
+    TableName:
+      Description: Nome da tabela DynamoDB
+      Value: !Ref MainTable
+
+    UserPoolId:
+      Description: Cognito User Pool ID
+      Value: !Ref CognitoUserPool
+
+    UserPoolClientId:
+      Description: Cognito App Client ID (usar no Flutter)
+      Value: !Ref CognitoUserPoolClient
+
+    ApiUrl:
+      Description: URL base da HTTP API
+      Value:
+        Fn::Sub: 'https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com'
+

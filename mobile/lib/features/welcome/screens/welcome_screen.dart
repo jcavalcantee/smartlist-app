@@ -1,12 +1,34 @@
+import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-class WelcomeScreen extends StatelessWidget {
+class WelcomeScreen extends StatefulWidget {
   const WelcomeScreen({super.key});
+
+  @override
+  State<WelcomeScreen> createState() => _WelcomeScreenState();
+}
+
+class _WelcomeScreenState extends State<WelcomeScreen> {
+  @override
+  void initState() {
+    super.initState();
+    _checkAuth();
+  }
+
+  Future<void> _checkAuth() async {
+    try {
+      final session = await Amplify.Auth.fetchAuthSession();
+      if (session.isSignedIn && mounted) {
+        context.go('/home');
+      }
+    } catch (_) {}
+  }
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
       body: SafeArea(
@@ -48,8 +70,20 @@ class WelcomeScreen extends StatelessWidget {
               ),
               const Spacer(flex: 4),
               FilledButton(
-                onPressed: () => context.go('/home'),
-                child: const Text('Começar'),
+                onPressed: () => context.push('/login'),
+                child: const Text('Entrar'),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton(
+                onPressed: () => context.push('/register'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 52),
+                  side: BorderSide(color: colorScheme.primary),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text('Criar conta'),
               ),
               const SizedBox(height: 48),
             ],

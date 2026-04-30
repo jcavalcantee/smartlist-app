@@ -2,18 +2,41 @@ node_modules/
 dist/
 .build/
 .aws-sam/
+backend/.serverless/
+backend/node_modules/
 *.js.map
 .env
 .env.local
 *.env
 samconfig.toml.bak
 
-# Flutter
+# Flutter — mobile subproject
 mobile/.dart_tool/
 mobile/.flutter-plugins
 mobile/.flutter-plugins-dependencies
 mobile/build/
 mobile/.packages
+mobile/.metadata
+mobile/README.md
+
+# Flutter — root (build artifacts synced for APK generation)
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.metadata
+.packages
+build/
+lib/
+pubspec.yaml
+pubspec.lock
+analysis_options.yaml
+app_compras.iml
+test/
+ios/
+linux/
+macos/
+windows/
+web/
 
 # IDEs
 .vscode/settings.json

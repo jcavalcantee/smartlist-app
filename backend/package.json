@@ -1,0 +1,25 @@
+{
+  "name": "app-compras-backend",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "deploy": "sls deploy",
+    "deploy:prod": "sls deploy --stage prod",
+    "remove": "sls remove",
+    "info": "sls info",
+    "logs:ingest": "sls logs -f ingestItem -t",
+    "type-check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.145",
+    "@types/node": "^20.0.0",
+    "serverless": "^3.38.0",
+    "serverless-esbuild": "^1.52.0",
+    "typescript": "^5.4.0",
+    "esbuild": "^0.21.0"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.600.0",
+    "@aws-sdk/lib-dynamodb": "^3.600.0"
+  }
+}

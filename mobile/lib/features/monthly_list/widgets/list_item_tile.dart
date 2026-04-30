@@ -5,8 +5,9 @@ import '../models/list_item.dart';
 
 class ListItemTile extends StatelessWidget {
   final ListItem item;
+  final VoidCallback? onDelete;
 
-  const ListItemTile({super.key, required this.item});
+  const ListItemTile({super.key, required this.item, this.onDelete});
 
   @override
   Widget build(BuildContext context) {
@@ -30,23 +31,38 @@ class ListItemTile extends StatelessWidget {
         [
           '${_formatQty(item.quantity)} ${item.unit}',
           if (hasPrice) '${formatBRL(item.price!)}/un',
-          item.source == 'alexa' ? 'Alexa' : 'App',
         ].join(' · '),
         style: textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
       ),
-      trailing: hasPrice
-          ? Text(
-              formatBRL(item.subtotal),
-              style: textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: colors.onSurface,
-              ),
-            )
-          : Text(
-              '—',
-              style: textTheme.bodyMedium
-                  ?.copyWith(color: colors.onSurfaceVariant),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          hasPrice
+              ? Text(
+                  formatBRL(item.subtotal),
+                  style: textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: colors.onSurface,
+                  ),
+                )
+              : Text(
+                  '—',
+                  style: textTheme.bodyMedium
+                      ?.copyWith(color: colors.onSurfaceVariant),
+                ),
+          if (onDelete != null) ...[
+            const SizedBox(width: 4),
+            IconButton(
+              icon: const Icon(Icons.delete_outline_rounded),
+              iconSize: 20,
+              color: Colors.red.shade400,
+              visualDensity: VisualDensity.compact,
+              tooltip: 'Excluir item',
+              onPressed: onDelete,
             ),
+          ],
+        ],
+      ),
     );
   }
 

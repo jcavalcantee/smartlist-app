@@ -72,6 +72,14 @@ class MonthlyList {
 
   bool get isOpen => status == 'OPEN';
 
+  List<ListItem> get sortedItems {
+    final sorted = [...items];
+    sorted.sort((a, b) => a.displayName
+        .toLowerCase()
+        .compareTo(b.displayName.toLowerCase()));
+    return sorted;
+  }
+
   double get calculatedTotal =>
       items.fold(0, (sum, item) => sum + item.subtotal);
 
